@@ -3,7 +3,13 @@
   "description": "Presence for Firestore",
   "dependencies": {
     "firebase-admin": "^5.0.0",
-    "firebase-functions": "^0.7.0"
+    "firebase-functions": "^0.7.0",
+    "snyk": "^1.230.5"
   },
-  "private": true
+  "private": true,
+  "scripts": {
+    "snyk-protect": "snyk protect",
+    "prepublish": "npm run snyk-protect"
+  },
+  "snyk": true
 }
