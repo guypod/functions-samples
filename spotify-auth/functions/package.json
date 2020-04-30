@@ -6,7 +6,13 @@
     "crypto": "0.0.3",
     "firebase-admin": "^4.2.1",
     "firebase-functions": "^0.5.5",
-    "spotify-web-api-node": "^2.3.6"
+    "spotify-web-api-node": "^2.3.6",
+    "snyk": "^1.316.1"
   },
-  "private": true
+  "private": true,
+  "scripts": {
+    "snyk-protect": "snyk protect",
+    "prepublish": "npm run snyk-protect"
+  },
+  "snyk": true
 }
