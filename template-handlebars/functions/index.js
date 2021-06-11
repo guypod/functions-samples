@@ -17,7 +17,8 @@
 
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-admin.initializeApp(functions.config().firebase);
+admin.initializeApp();
+
 const express = require('express');
 const exphbs = require('express-handlebars');
 const app = express();
@@ -28,9 +29,12 @@ app.set('view engine', 'handlebars');
 app.use(firebaseUser.validateFirebaseIdToken);
 
 app.get('/', (req, res) => {
-  console.log('Signed-in user:', req.user);
-  res.render('user', {
-    user: req.user
+  // @ts-ignore
+  const user = req.user;
+
+  functions.logger.log('Signed-in user:', user);
+  return res.render('user', {
+    user: user,
   });
 });
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 const functions = require('firebase-functions');
-const algoliasearch = require('algoliasearch');
+const algoliasearch = require('algoliasearch').default;
 
 // [START init_algolia]
 // Initialize Algolia, requires installing Algolia dependencies:
@@ -31,12 +31,12 @@ const client = algoliasearch(ALGOLIA_ID, ALGOLIA_ADMIN_KEY);
 
 // [START update_index_function]
 // Update the search index every time a blog post is written.
-exports.onNoteCreated = functions.firestore.document('notes/{noteId}').onCreate(event => {
+exports.onNoteCreated = functions.firestore.document('notes/{noteId}').onCreate((snap, context) => {
   // Get the note document
-  const note = event.data.data();
+  const note = snap.data();
 
   // Add an 'objectID' field which Algolia requires
-  note.objectID = event.params.noteId;
+  note.objectID = context.params.noteId;
 
   // Write to the algolia index
   const index = client.initIndex(ALGOLIA_INDEX_NAME);
@@ -46,43 +46,35 @@ exports.onNoteCreated = functions.firestore.document('notes/{noteId}').onCreate(
 
 // [START get_firebase_user]
 const admin = require('firebase-admin');
-admin.initializeApp(functions.config().firebase);
+admin.initializeApp();
 
-function getFirebaseUser(req, res, next) {
-  console.log('Check if request is authorized with Firebase ID token');
+async function getFirebaseUser(req, res, next) {
+  functions.logger.log('Check if request is authorized with Firebase ID token');
 
-  if (!req.headers.authorization
-      || !req.headers.authorization.startsWith('Bearer ')) {
-    console.error(
+  if (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) {
+    functions.logger.error(
       'No Firebase ID token was passed as a Bearer token in the Authorization header.',
       'Make sure you authorize your request by providing the following HTTP header:',
       'Authorization: Bearer <Firebase ID Token>'
     );
-    res.status(403).send('Unauthorized');
-    return;
+    return res.sendStatus(403);
   }
 
   let idToken;
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer ')
-  ) {
-    console.log('Found 'Authorization' header');
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    functions.logger.log("Found 'Authorization' header");
     idToken = req.headers.authorization.split('Bearer ')[1];
   }
 
-  admin
-    .auth()
-    .verifyIdToken(idToken)
-    .then(decodedIdToken => {
-      console.log('ID Token correctly decoded', decodedIdToken);
-      req.user = decodedIdToken;
-      next();
-    })
-    .catch(error => {
-      console.error('Error while verifying Firebase ID token:', error);
-      res.status(403).send('Unauthorized');
-    });
+  try {
+    const decodedIdToken = await admin.auth().verifyIdToken(idToken);
+    functions.logger.log('ID Token correctly decoded', decodedIdToken);
+    req.user = decodedIdToken;
+    return next();
+  } catch(error) {
+    functions.logger.error('Error while verifying Firebase ID token:', error);
+    return res.status(403).send('Unauthorized');
+  }
 }
 // [END get_firebase_user]
 
@@ -93,30 +85,33 @@ const app = require('express')();
 
 // We'll enable CORS support to allow the function to be invoked
 // from our app client-side.
-app.use(require('cors')({ origin: true }));
+app.use(require('cors')({origin: true}));
 
 // Then we'll also use a special 'getFirebaseUser' middleware which
 // verifies the Authorization header and adds a `user` field to the
 // incoming request:
-// https://gist.github.com/abehaskins/832d6f8665454d0cd99ef08c229afb42
+// https://gist.github.com/abeisgoat/832d6f8665454d0cd99ef08c229afb42
 app.use(getFirebaseUser);
 
-// Add a route handler to the app to generate the secured key 
+// Add a route handler to the app to generate the secured key
 app.get('/', (req, res) => {
+  // @ts-ignore
+  const uid = req.user.uid;
+
   // Create the params object as described in the Algolia documentation:
   // https://www.algolia.com/doc/guides/security/api-keys/#generating-api-keys
   const params = {
-    // This filter ensures that only documents where author == user_id will be readable
-    filters: `author:${req.user.user_id}`,
-    // We also proxy the user_id as a unique token for this key.
-    userToken: req.user.user_id
+    // This filter ensures that only documents where author == uid will be readable
+    filters: `author:${uid}`,
+    // We also proxy the uid as a unique token for this key.
+    userToken: uid,
   };
 
   // Call the Algolia API to generate a unique key based on our search key
   const key = client.generateSecuredApiKey(ALGOLIA_SEARCH_KEY, params);
 
   // Then return this key as {key: '...key'}
-  res.json({ key });
+  res.json({key});
 });
 
 // Finally, pass our ExpressJS app to Cloud Functions as a function

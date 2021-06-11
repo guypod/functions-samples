@@ -22,16 +22,17 @@ const path = require('path');
 const os = require('os');
 
 const admin = require('firebase-admin');
-admin.initializeApp(functions.config().firebase);
-const gcs = require('@google-cloud/storage')();
+admin.initializeApp();
+const { Storage } = require('@google-cloud/storage');
 const spawn = require('child-process-promise').spawn;
+
+const gcs = new Storage();
 
 /**
  * When an image is uploaded in the Storage bucket the information and metadata of the image (the
  * output of ImageMagick's `identify -verbose`) is saved in the Realtime Database.
  */
-exports.metadata = functions.storage.object().onChange(event => {
-  const object = event.data;
+exports.metadata = functions.storage.object().onFinalize(async (object) => {
   const filePath = object.name;
 
   // Create random filename with same extension as uploaded file.
@@ -40,33 +41,25 @@ exports.metadata = functions.storage.object().onChange(event => {
 
   // Exit if this is triggered on a file that is not an image.
   if (!object.contentType.startsWith('image/')) {
-    console.log('This is not an image.');
-    return;
+    functions.logger.log('This is not an image.');
+    return null;
   }
 
-  // Exit if this is a move or deletion event.
-  if (object.resourceState === 'not_exists') {
-    console.log('This is a deletion event.');
-    return;
-  }
-
+  let metadata;
   // Download file from bucket.
   const bucket = gcs.bucket(object.bucket);
-  return bucket.file(filePath).download({destination: tempLocalFile}).then(() => {
-    // Get Metadata from image.
-    return spawn('identify', ['-verbose', tempLocalFile], { capture: [ 'stdout', 'stderr' ]}).then(result => {
-      const metadata = imageMagickOutputToObject(result.stdout);
-      // Save metadata to realtime datastore.
-      return admin.database().ref(makeKeyFirebaseCompatible(filePath)).set(metadata).then(() => {
-        console.log('Wrote to:', filePath, 'data:', metadata);
-      });
-    });
-  }).then(() => {
-    // Cleanup temp directory after metadata is extracted
-    // Remove the file from temp directory
-    fs.unlinkSync(tempLocalFile);
-    console.log('cleanup successful!');
-  });
+  await bucket.file(filePath).download({destination: tempLocalFile});
+  // Get Metadata from image.
+  const result = await spawn('identify', ['-verbose', tempLocalFile], {capture: ['stdout', 'stderr']});
+  // Save metadata to realtime datastore.
+  metadata = imageMagickOutputToObject(result.stdout);
+  const safeKey = makeKeyFirebaseCompatible(filePath);
+  await admin.database().ref(safeKey).set(metadata);
+  functions.logger.log('Wrote to:', filePath, 'data:', metadata);
+  // Cleanup temp directory after metadata is extracted
+  // Remove the file from temp directory
+  await fs.unlinkSync(tempLocalFile)
+  return functions.logger.log('cleanup successful!');
 });
 
 /**
@@ -95,7 +88,7 @@ function imageMagickOutputToObject(output) {
   output = lines.join('');
   output = '{' + output.substring(0, output.length - 1) + '}'; // remove trailing comma.
   output = JSON.parse(output);
-  console.log('Metadata extracted from image', output);
+  functions.logger.log('Metadata extracted from image', output);
   return output;
 }
 

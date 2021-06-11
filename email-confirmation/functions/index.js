@@ -26,31 +26,43 @@ const mailTransport = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: gmailEmail,
-    pass: gmailPassword
-  }
+    pass: gmailPassword,
+  },
 });
 
 // Sends an email confirmation when a user changes his mailing list subscription.
-exports.sendEmailConfirmation = functions.database.ref('/users/{uid}').onWrite(event => {
-  const snapshot = event.data;
-  const val = snapshot.val();
-
-  if (!snapshot.changed('subscribedToMailingList')) {
+exports.sendEmailConfirmation = functions.database.ref('/users/{uid}').onWrite(async (change) => {
+  // Early exit if the 'subscribedToMailingList' field has not changed
+  if (change.after.child('subscribedToMailingList').val() === change.before.child('subscribedToMailingList').val()) {
     return null;
   }
 
+  const val = change.after.val();
+
   const mailOptions = {
     from: '"Spammy Corp." <noreply@firebase.com>',
-    to: val.email
+    to: val.email,
   };
-  
+
   const subscribed = val.subscribedToMailingList;
 
   // Building Email message.
   mailOptions.subject = subscribed ? 'Thanks and Welcome!' : 'Sad to see you go :`(';
-  mailOptions.text = subscribed ? 'Thanks you for subscribing to our newsletter. You will receive our next weekly newsletter.' : 'I hereby confirm that I will stop sending you the newsletter.';
+  mailOptions.text = subscribed ?
+      'Thanks you for subscribing to our newsletter. You will receive our next weekly newsletter.' :
+      'I hereby confirm that I will stop sending you the newsletter.';
   
-  return mailTransport.sendMail(mailOptions)
-    .then(() => console.log(`New ${subscribed ? '' : 'un'}subscription confirmation email sent to:`, val.email))
-    .catch(error => console.error('There was an error while sending the email:', error));
+  try {
+    await mailTransport.sendMail(mailOptions);
+    functions.logger.log(
+      `New ${subscribed ? '' : 'un'}subscription confirmation email sent to:`,
+      val.email
+    );
+  } catch(error) {
+    functions.logger.error(
+      'There was an error while sending the email:',
+      error
+    );
+  }
+  return null;
 });

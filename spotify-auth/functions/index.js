@@ -21,10 +21,11 @@ const crypto = require('crypto');
 
 // Firebase Setup
 const admin = require('firebase-admin');
+// @ts-ignore
 const serviceAccount = require('./service-account.json');
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: `https://${process.env.GCLOUD_PROJECT}.firebaseio.com`
+  databaseURL: `https://${process.env.GCLOUD_PROJECT}.firebaseio.com`,
 });
 
 // Spotify OAuth 2 setup
@@ -33,7 +34,7 @@ const SpotifyWebApi = require('spotify-web-api-node');
 const Spotify = new SpotifyWebApi({
   clientId: functions.config().spotify.client_id,
   clientSecret: functions.config().spotify.client_secret,
-  redirectUri: `https://${process.env.GCLOUD_PROJECT}.firebaseapp.com/popup.html`
+  redirectUri: `https://${process.env.GCLOUD_PROJECT}.firebaseapp.com/popup.html`,
 });
 
 // Scopes to request.
@@ -46,7 +47,7 @@ const OAUTH_SCOPES = ['user-read-email'];
 exports.redirect = functions.https.onRequest((req, res) => {
   cookieParser()(req, res, () => {
     const state = req.cookies.state || crypto.randomBytes(20).toString('hex');
-    console.log('Setting verification state:', state);
+    functions.logger.log('Setting verification state:', state);
     res.cookie('state', state.toString(), {maxAge: 3600000, secure: true, httpOnly: true});
     const authorizeURL = Spotify.createAuthorizeURL(OAUTH_SCOPES, state.toString());
     res.redirect(authorizeURL);
@@ -62,26 +63,32 @@ exports.redirect = functions.https.onRequest((req, res) => {
 exports.token = functions.https.onRequest((req, res) => {
   try {
     cookieParser()(req, res, () => {
-      console.log('Received verification state:', req.cookies.state);
-      console.log('Received state:', req.query.state);
+      functions.logger.log('Received verification state:', req.cookies.state);
+      functions.logger.log('Received state:', req.query.state);
       if (!req.cookies.state) {
         throw new Error('State cookie not set or expired. Maybe you took too long to authorize. Please try again.');
       } else if (req.cookies.state !== req.query.state) {
         throw new Error('State validation failed');
       }
-      console.log('Received auth code:', req.query.code);
+      functions.logger.log('Received auth code:', req.query.code);
       Spotify.authorizationCodeGrant(req.query.code, (error, data) => {
         if (error) {
           throw error;
         }
-        console.log('Received Access Token:', data.body['access_token']);
+        functions.logger.log(
+          'Received Access Token:',
+          data.body['access_token']
+        );
         Spotify.setAccessToken(data.body['access_token']);
-        
-        Spotify.getMe((error, userResults) => {
+
+        Spotify.getMe(async (error, userResults) => {
           if (error) {
             throw error;
           }
-          console.log('Auth code exchange result received:', userResults);
+          functions.logger.log(
+            'Auth code exchange result received:',
+            userResults
+          );
           // We have a Spotify access token and the user identity now.
           const accessToken = data.body['access_token'];
           const spotifyUserID = userResults.body['id'];
@@ -90,17 +97,16 @@ exports.token = functions.https.onRequest((req, res) => {
           const email = userResults.body['email'];
 
           // Create a Firebase account and get the Custom Auth Token.
-          createFirebaseAccount(spotifyUserID, userName, profilePic, email, accessToken).then(
-              firebaseToken => {
-                // Serve an HTML page that signs the user in and updates the user profile.
-                res.jsonp({token: firebaseToken});
-              });
+          const firebaseToken = await createFirebaseAccount(spotifyUserID, userName, profilePic, email, accessToken);
+          // Serve an HTML page that signs the user in and updates the user profile.
+          res.jsonp({token: firebaseToken});
         });
       });
     });
   } catch (error) {
-    return res.jsonp({error: error.toString});
+    res.jsonp({error: error.toString()});
   }
+  return null;
 });
 
 /**
@@ -110,21 +116,20 @@ exports.token = functions.https.onRequest((req, res) => {
  *
  * @returns {Promise<string>} The Firebase custom auth token in a promise.
  */
-function createFirebaseAccount(spotifyID, displayName, photoURL, email, accessToken) {
+async function createFirebaseAccount(spotifyID, displayName, photoURL, email, accessToken) {
   // The UID we'll assign to the user.
   const uid = `spotify:${spotifyID}`;
 
   // Save the access token to the Firebase Realtime Database.
-  const databaseTask = admin.database().ref(`/spotifyAccessToken/${uid}`)
-      .set(accessToken);
+  const databaseTask = admin.database().ref(`/spotifyAccessToken/${uid}`).set(accessToken);
 
   // Create or update the user account.
   const userCreationTask = admin.auth().updateUser(uid, {
     displayName: displayName,
     photoURL: photoURL,
     email: email,
-    emailVerified: true
-  }).catch(error => {
+    emailVerified: true,
+  }).catch((error) => {
     // If user does not exists we create it.
     if (error.code === 'auth/user-not-found') {
       return admin.auth().createUser({
@@ -132,18 +137,21 @@ function createFirebaseAccount(spotifyID, displayName, photoURL, email, accessTo
         displayName: displayName,
         photoURL: photoURL,
         email: email,
-        emailVerified: true
+        emailVerified: true,
       });
     }
     throw error;
   });
 
   // Wait for all async tasks to complete, then generate and return a custom auth token.
-  return Promise.all([userCreationTask, databaseTask]).then(() => {
-    // Create a Firebase custom auth token.
-    return admin.auth().createCustomToken(uid).then((token) => {
-      console.log('Created Custom token for UID "', uid, '" Token:', token);
-      return token;
-    });
-  });
+  await Promise.all([userCreationTask, databaseTask]);
+  // Create a Firebase custom auth token.
+  const token = await admin.auth().createCustomToken(uid);
+  functions.logger.log(
+    'Created Custom token for UID "',
+    uid,
+    '" Token:',
+    token
+  );
+  return token;
 }

@@ -25,7 +25,7 @@ function Demo() {
     this.responseContainerCookie = document.getElementById('demo-response-cookie');
     this.urlContainer = document.getElementById('demo-url');
     this.urlContainerCookie = document.getElementById('demo-url-cookie');
-    this.helloUserUrl = 'https://' + firebase.app().options.authDomain + '/hello';
+    this.helloUserUrl = window.location.href + 'hello';
     this.signedOutCard = document.getElementById('demo-signed-out-card');
     this.signedInCard = document.getElementById('demo-signed-in-card');
 
@@ -59,11 +59,13 @@ Demo.prototype.signIn = function() {
 // Signs-out of Firebase.
 Demo.prototype.signOut = function() {
   firebase.auth().signOut();
+  // clear the __session cookie
+  document.cookie = '__session=';
 };
 
 // Does an authenticated request to a Firebase Functions endpoint using an Authorization header.
 Demo.prototype.startFunctionsRequest = function() {
-  firebase.auth().currentUser.getToken().then(function(token) {
+  firebase.auth().currentUser.getIdToken().then(function(token) {
     console.log('Sending request to', this.helloUserUrl, 'with ID token in Authorization header.');
     var req = new XMLHttpRequest();
     req.onload = function() {
@@ -81,7 +83,7 @@ Demo.prototype.startFunctionsRequest = function() {
 // Does an authenticated request to a Firebase Functions endpoint using a __session cookie.
 Demo.prototype.startFunctionsCookieRequest = function() {
   // Set the __session cookie.
-  firebase.auth().currentUser.getToken(true).then(function(token) {
+  firebase.auth().currentUser.getIdToken(true).then(function(token) {
     // set the __session cookie
     document.cookie = '__session=' + token + ';max-age=3600';
 
@@ -96,7 +98,7 @@ Demo.prototype.startFunctionsCookieRequest = function() {
     req.open('GET', this.helloUserUrl, true);
     req.send();
   }.bind(this));
-}
+};
 
 // Load the demo.
 window.demo = new Demo();

@@ -26,9 +26,9 @@ Create a Firebase Project on the [Firebase Console](https://console.firebase.goo
 Set up your Firebase project by running `firebase use --add`, select your Project ID and follow the instructions.
 
 
-### 3. Install the Firebase CLI and enable Functions on your Firebase CLI
+### 3. Install the Firebase CLI
 
-You need to have installed the Firebase CLI. If you haven't run:
+You need to have installed the Firebase CLI, and it always helps to be on the latest version. Run:
 
 ```bash
 npm install -g firebase-tools
@@ -38,11 +38,19 @@ npm install -g firebase-tools
 
 ## Try the sample locally
 
-Start serving your project locally using `firebase serve --only hosting,functions`
+First you need to install the `npm` dependencies of the functions:
 
-Open the app in a browser at `https://localhost:5000/bigben`.
+```bash
+cd functions && npm install; cd ..
+```
 
-A page containing a repeated number of "BONG" will be displayed.
+Start serving your project locally using `firebase serve`
+
+Open the app in a browser at [https://localhost:5000/](https://localhost:5000/).
+
+A page containing a repeated number of "BONG" - One for each hour of the day - will be displayed.
+
+You can click on the **Refresh** button which will call the API by doing an XHR to `/api` and refresh the "BONG" display on the page.
 
 
 ## Deploy the app to prod
@@ -61,7 +69,7 @@ Deploy to Firebase using the following command:
 firebase deploy
 ```
 
-This deploys and activates the `reverseString` Function.
+This deploys and activates the `bigben` Function.
 
 > The first time you call `firebase deploy` on a new project with Functions will take longer than usual.
 

@@ -14,7 +14,7 @@ detected by the [Cloud Natural Language API](https://cloud.google.com/natural-la
 
  1. Create a Firebase Project using the [Firebase Console](https://console.firebase.google.com).
  1. Enable the **Google** Provider in the **Auth** section.
- 1. Enable Billing on your project (to connect to the Natural Language API) by switching to the Blaze or Flame plan.
+ 1. Enable Billing on your project (to connect to the Natural Language API) by switching to the Blaze plan.
  1. Clone or download this repo and open the `authenticated-json-api` directory.
  1. You must have the Firebase CLI installed. If you don't have it install it with `npm install -g firebase-tools` and then configure it with `firebase login`.
  1. Configure the CLI locally by using `firebase use --add` and select your project in the list.
@@ -26,6 +26,7 @@ detected by the [Cloud Natural Language API](https://cloud.google.com/natural-la
 This sample comes with a web-based UI for testing the function.
 To test locally do:
 
+  1. [Set up admin credentials](https://firebase.google.com/docs/functions/local-emulator#set_up_admin_credentials_optional) so that the emulator can talk to the Natural Language API
   1. Start serving your project locally using `firebase serve --only hosting,functions`
   1. Open the app in a browser at `https://localhost:5000`.
   1. Sign in to the web app in the browser using Google Sign-In
